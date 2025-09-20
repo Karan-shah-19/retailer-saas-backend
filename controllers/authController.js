@@ -36,18 +36,21 @@ const register = asyncHandler(async (req, res) => {
   }
 
   // Step 2: Create retailer profile in our custom table
-  const { data: retailerData, error: retailerError } = await supabase
-    .from('retailers')
-    .insert([
-      {
-        user_id: user.id,
-        name: name,
-        email: email,
-        theme: 'default'
-      }
-    ])
-    .select()
-    .single();
+const { supabaseAdmin } = require('../config/database');
+
+const { data: retailerData, error: retailerError } = await supabaseAdmin
+  .from('retailers')
+  .insert([
+    {
+      user_id: user.id,
+      name: name,
+      email: email,
+      theme: 'default'
+    }
+  ])
+  .select()
+  .single();
+
 
   if (retailerError) {
     // If retailer profile creation fails, we should cleanup the auth user

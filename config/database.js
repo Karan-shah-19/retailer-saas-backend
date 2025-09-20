@@ -9,7 +9,7 @@ require('dotenv').config();
 // Supabase configuration
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
-const supabaseServiceKey = process.env.SUPABASE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 // Check if required environment variables are present
 if (!supabaseUrl || !supabaseKey) {
