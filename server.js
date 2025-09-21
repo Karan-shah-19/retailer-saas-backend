@@ -63,6 +63,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/retailer', retailerRoutes);
+app.use('/api/uploads', require('./routes/uploads'));
 
 // API documentation endpoint
 app.get('/api', (req, res) => {

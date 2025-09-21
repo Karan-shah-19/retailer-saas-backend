@@ -1,5 +1,5 @@
 // controllers/retailerController.js
-// Retailer controller - handles retailer profile and settings
+// Retailer controller - handles retailer profile, settings, dashboard, public store
 
 const { supabase } = require('../config/database');
 const { asyncHandler } = require('../middleware/errorHandler');
@@ -20,24 +20,37 @@ const getSettings = asyncHandler(async (req, res) => {
 /**
  * Update retailer settings
  * PUT /retailer/settings
- * Body: { name, logo_url, theme }
+ * Body: { name, logo_url, colors, font, banner_url, nav_menu, layout, contact_info, social_links, footer_text }
  */
 const updateSettings = asyncHandler(async (req, res) => {
   const retailerId = req.retailer.id;
-  const updateData = req.body;
+  const {
+    name,
+    logo_url,
+    primary_color,
+    secondary_color,
+    font,
+    banner_url,
+    nav_menu,
+    layout_preference,
+    contact_info,
+    social_links,
+    footer_text
+  } = req.body;
 
-  // Remove undefined values and trim strings
+  // Clean data: remove undefined, trim strings
   const cleanedData = {};
-  Object.keys(updateData).forEach(key => {
-    if (updateData[key] !== undefined) {
-      // Trim strings to prevent empty spaces
-      cleanedData[key] = typeof updateData[key] === 'string' 
-        ? updateData[key].trim() 
-        : updateData[key];
+  Object.entries({
+    name, logo_url, primary_color, secondary_color, font,
+    banner_url, nav_menu, layout_preference, contact_info,
+    social_links, footer_text
+  }).forEach(([key, value]) => {
+    if (value !== undefined) {
+      cleanedData[key] = typeof value === 'string' ? value.trim() : value;
     }
   });
 
-  if (Object.keys(cleanedData).length === 0) {
+  if (!Object.keys(cleanedData).length) {
     return res.status(400).json({
       success: false,
       message: 'No valid fields to update'
@@ -69,7 +82,6 @@ const getDashboard = asyncHandler(async (req, res) => {
   const retailerId = retailer.id;
 
   try {
-    // Execute multiple queries in parallel for better performance
     const [
       { data: productStats, error: productError },
       { data: recentOrders, error: orderError },
@@ -81,14 +93,14 @@ const getDashboard = asyncHandler(async (req, res) => {
         .from('products')
         .select('is_active, stock')
         .eq('retailer_id', retailerId),
-      
+
       // Orders last 30 days
       supabase
         .from('orders')
         .select('status, total_amount, created_at')
         .eq('retailer_id', retailerId)
         .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
-      
+
       // Low stock products
       supabase
         .from('products')
@@ -98,7 +110,7 @@ const getDashboard = asyncHandler(async (req, res) => {
         .lte('stock', 5)
         .order('stock', { ascending: true })
         .limit(10),
-      
+
       // Weekly orders (last 7 days)
       supabase
         .from('orders')
@@ -108,19 +120,16 @@ const getDashboard = asyncHandler(async (req, res) => {
         .order('created_at', { ascending: true })
     ]);
 
-    // Check for errors
     if (productError) throw productError;
     if (orderError) throw orderError;
     if (lowStockError) throw lowStockError;
     if (weeklyError) throw weeklyError;
 
-    // Calculate product statistics
     const totalProducts = productStats.length;
     const activeProducts = productStats.filter(p => p.is_active).length;
     const inactiveProducts = totalProducts - activeProducts;
     const outOfStock = productStats.filter(p => p.stock === 0).length;
 
-    // Calculate order statistics
     const totalOrders = recentOrders.length;
     const pendingOrders = recentOrders.filter(o => o.status === 'pending').length;
     const deliveredOrders = recentOrders.filter(o => o.status === 'delivered').length;
@@ -128,7 +137,6 @@ const getDashboard = asyncHandler(async (req, res) => {
       .filter(o => o.status === 'delivered')
       .reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
 
-    // Generate weekly chart data
     const dailyOrders = {};
     for (let i = 6; i >= 0; i--) {
       const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
@@ -155,7 +163,7 @@ const getDashboard = asyncHandler(async (req, res) => {
           total: totalProducts,
           active: activeProducts,
           inactive: inactiveProducts,
-          outOfStock: outOfStock
+          outOfStock
         },
         orderStats: {
           totalLast30Days: totalOrders,
@@ -167,7 +175,6 @@ const getDashboard = asyncHandler(async (req, res) => {
         weeklyOrderChart: chartData
       }
     });
-
   } catch (error) {
     console.error('Dashboard error:', error);
     throw error;
@@ -176,7 +183,6 @@ const getDashboard = asyncHandler(async (req, res) => {
 
 /**
  * Get available themes
- * GET /retailer/themes
  */
 const getThemes = asyncHandler(async (req, res) => {
   const themes = [
@@ -187,27 +193,20 @@ const getThemes = asyncHandler(async (req, res) => {
     { id: 'bold', name: 'Bold', description: 'Vibrant and eye-catching', preview: '/themes/bold-preview.jpg' }
   ];
 
-  res.status(200).json({
-    success: true,
-    data: themes
-  });
+  res.status(200).json({ success: true, data: themes });
 });
 
 /**
  * Update retailer theme
  * PATCH /retailer/theme
- * Body: { theme }
  */
 const updateTheme = asyncHandler(async (req, res) => {
   const { theme } = req.body;
   const retailerId = req.retailer.id;
-
   const validThemes = ['default', 'modern', 'classic', 'minimal', 'bold'];
+
   if (!validThemes.includes(theme)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Invalid theme selection. Valid options: ' + validThemes.join(', ')
-    });
+    return res.status(400).json({ success: false, message: 'Invalid theme selection' });
   }
 
   const { data, error } = await supabase
@@ -216,14 +215,10 @@ const updateTheme = asyncHandler(async (req, res) => {
     .eq('id', retailerId)
     .select()
     .single();
-  
+
   if (error) throw error;
 
-  res.status(200).json({ 
-    success: true, 
-    message: `Theme updated to '${theme}' successfully`, 
-    data 
-  });
+  res.status(200).json({ success: true, message: `Theme updated to '${theme}'`, data });
 });
 
 /**
@@ -233,17 +228,21 @@ const updateTheme = asyncHandler(async (req, res) => {
 const getPublicStore = asyncHandler(async (req, res) => {
   const { retailerId } = req.params;
 
-  // Get retailer and products in parallel
   const [
     { data: retailer, error: retailerError },
     { data: products, error: productError }
   ] = await Promise.all([
     supabase
       .from('retailers')
-      .select('id, name, logo_url, theme')
+      .select(`
+        id, name, logo_url, theme,
+        primary_color, secondary_color, font,
+        banner_url, nav_menu, layout_preference,
+        contact_info, social_links, footer_text
+      `)
       .eq('id', retailerId)
       .single(),
-    
+
     supabase
       .from('products')
       .select('id, name, description, price, stock, category, image_url')
@@ -254,18 +253,14 @@ const getPublicStore = asyncHandler(async (req, res) => {
   ]);
 
   if (retailerError || !retailer) {
-    return res.status(404).json({ 
-      success: false, 
-      message: 'Store not found or not available' 
-    });
+    return res.status(404).json({ success: false, message: 'Store not found or not available' });
   }
-
   if (productError) throw productError;
 
   res.status(200).json({
     success: true,
-    data: { 
-      store: retailer, 
+    data: {
+      store: retailer,
       products: products || [],
       productCount: products ? products.length : 0
     }

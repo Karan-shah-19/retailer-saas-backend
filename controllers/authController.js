@@ -1,7 +1,5 @@
 // controllers/authController.js
-// Authentication controller - handles user registration and login
-
-const { supabase } = require('../config/database');
+const { supabase, supabaseAdmin } = require('../config/database');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 /**
@@ -12,22 +10,22 @@ const { asyncHandler } = require('../middleware/errorHandler');
 const register = asyncHandler(async (req, res) => {
   const { email, password, name } = req.body;
 
-  // Step 1: Create user in Supabase Auth
-  const { data: authData, error: authError } = await supabase.auth.signUp({
+  // 1️⃣ Create user in Supabase Auth
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
+    email_confirm: true, // auto-confirm email for now
   });
 
   if (authError) {
-    const statusCode = authError.status || 400;
-    return res.status(statusCode).json({
+    return res.status(400).json({
       success: false,
       message: authError.message || 'Registration failed'
     });
   }
 
   const user = authData.user;
-  
+
   if (!user) {
     return res.status(400).json({
       success: false,
@@ -35,26 +33,19 @@ const register = asyncHandler(async (req, res) => {
     });
   }
 
-  // Step 2: Create retailer profile in our custom table
-const { supabaseAdmin } = require('../config/database');
-
-const { data: retailerData, error: retailerError } = await supabaseAdmin
-  .from('retailers')
-  .insert([
-    {
+  // 2️⃣ Create retailer profile in custom table
+  const { data: retailerData, error: retailerError } = await supabaseAdmin
+    .from('retailers')
+    .insert([{
       user_id: user.id,
-      name: name,
+      name: name || email,
       email: email,
       theme: 'default'
-    }
-  ])
-  .select()
-  .single();
-
+    }])
+    .select()
+    .single();
 
   if (retailerError) {
-    // If retailer profile creation fails, we should cleanup the auth user
-    // Note: In production, you might want to handle this differently
     console.error('Retailer profile creation failed:', retailerError);
     return res.status(500).json({
       success: false,
@@ -62,10 +53,10 @@ const { data: retailerData, error: retailerError } = await supabaseAdmin
     });
   }
 
-  // Step 3: Return success response
+  // 3️⃣ Return success
   res.status(201).json({
     success: true,
-    message: 'Registration successful! Please check your email to verify your account.',
+    message: 'Registration successful!',
     data: {
       user: {
         id: user.id,
@@ -85,15 +76,14 @@ const { data: retailerData, error: retailerError } = await supabaseAdmin
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  // Step 1: Authenticate with Supabase Auth
+  // 1️⃣ Authenticate user
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
     email,
-    password,
+    password
   });
 
   if (authError) {
-    const statusCode = authError.status || 401;
-    return res.status(statusCode).json({
+    return res.status(401).json({
       success: false,
       message: authError.message || 'Login failed'
     });
@@ -108,8 +98,8 @@ const login = asyncHandler(async (req, res) => {
     });
   }
 
-  // Step 2: Get retailer profile
-  const { data: retailerData, error: retailerError } = await supabase
+  // 2️⃣ Fetch retailer profile
+  const { data: retailerData, error: retailerError } = await supabaseAdmin
     .from('retailers')
     .select('*')
     .eq('user_id', user.id)
@@ -122,7 +112,7 @@ const login = asyncHandler(async (req, res) => {
     });
   }
 
-  // Step 3: Return success response with session token
+  // 3️⃣ Return success
   res.status(200).json({
     success: true,
     message: 'Login successful',
@@ -148,7 +138,6 @@ const login = asyncHandler(async (req, res) => {
  * Headers: Authorization: Bearer <token>
  */
 const logout = asyncHandler(async (req, res) => {
-  // Get token from Authorization header
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -159,7 +148,6 @@ const logout = asyncHandler(async (req, res) => {
     });
   }
 
-  // Sign out from Supabase (this invalidates the token)
   const { error } = await supabase.auth.signOut(token);
 
   if (error) {
@@ -178,29 +166,19 @@ const logout = asyncHandler(async (req, res) => {
 /**
  * Get current user profile
  * GET /auth/me
- * Headers: Authorization: Bearer <token>
  */
 const getProfile = asyncHandler(async (req, res) => {
-  // User and retailer info is already available from auth middleware
   const { user, retailer } = req;
 
   res.status(200).json({
     success: true,
-    data: {
-      user: {
-        id: user.id,
-        email: user.email,
-        email_confirmed_at: user.email_confirmed_at
-      },
-      retailer: retailer
-    }
+    data: { user, retailer }
   });
 });
 
 /**
  * Request password reset
  * POST /auth/forgot-password
- * Body: { email }
  */
 const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
@@ -212,7 +190,6 @@ const forgotPassword = asyncHandler(async (req, res) => {
     });
   }
 
-  // Send password reset email via Supabase
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.FRONTEND_URL}/reset-password`
   });
@@ -224,7 +201,6 @@ const forgotPassword = asyncHandler(async (req, res) => {
     });
   }
 
-  // Always return success for security (don't reveal if email exists)
   res.status(200).json({
     success: true,
     message: 'If an account with that email exists, we have sent a password reset link.'
