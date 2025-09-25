@@ -2,6 +2,18 @@
 const { supabase, supabaseAdmin } = require('../config/database');
 const { asyncHandler } = require('../middleware/errorHandler');
 
+
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+export const deleteUser = async (userId) => {
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+  if (error) throw error;
+  return { message: 'User deleted successfully' };
+};
+
+
 /**
  * Register a new retailer
  * POST /auth/register
